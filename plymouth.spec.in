@@ -18,6 +18,10 @@ Source2: charge.plymouth
 # and that does not need the removed symbols.
 Patch0: 0001-Revert-configure-bump-so-name.patch
 
+Patch1: 0001-Add-support-for-CSI-sequences.patch
+Patch2: 0001-Add-display_prompt-function.patch
+Patch3: 0002-script-add-String.Length-function.patch
+
 BuildRequires: gcc libtool git
 BuildRequires: pkgconfig(libdrm)
 BuildRequires: pkgconfig(libudev)

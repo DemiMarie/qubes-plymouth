@@ -1,0 +1,47 @@
+From af17588437fb818c09b5b28233784292190304a4 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Mateusz=20Pi=C3=B3rkowski?= <mati7337@protonmail.ch>
+Date: Fri, 4 Mar 2022 19:23:45 +0100
+Subject: [PATCH 2/2] script: add String.Length function
+
+Add String.Length function which returns the length of a string.
+It will make it possible to get the number of bullets from the
+display prompt callback inside scripts.
+---
+ src/plugins/splash/script/script-lib-string.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/src/plugins/splash/script/script-lib-string.c b/src/plugins/splash/script/script-lib-string.c
+index 6fb5e7d..2529b21 100644
+--- a/src/plugins/splash/script/script-lib-string.c
++++ b/src/plugins/splash/script/script-lib-string.c
+@@ -89,6 +89,15 @@ static script_return_t script_lib_string_sub_string (script_state_t *state,
+         return script_return_obj (substring_obj);
+ }
+ 
++static script_return_t script_lib_string_length (script_state_t *state,
++                                                 void           *user_data)
++{
++        char *text = script_obj_as_string (state->this);
++        size_t text_length = strlen(text);
++        free (text);
++        return script_return_obj (script_obj_new_number (text_length));
++}
++
+ script_lib_string_data_t *script_lib_string_setup (script_state_t *state)
+ {
+         script_lib_string_data_t *data = malloc (sizeof(script_lib_string_data_t));
+@@ -108,6 +117,11 @@ script_lib_string_data_t *script_lib_string_setup (script_state_t *state)
+                                     "start",
+                                     "end",
+                                     NULL);
++        script_add_native_function (string_hash,
++                                    "Length",
++                                    script_lib_string_length,
++                                    NULL,
++                                    NULL);
+         script_obj_unref (string_hash);
+         data->script_main_op = script_parse_string (script_lib_string_string, "script-lib-string.script");
+         script_return_t ret = script_execute (state, data->script_main_op);
+-- 
+2.35.1
+

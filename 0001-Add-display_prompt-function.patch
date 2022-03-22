@@ -1,0 +1,222 @@
+From fcf5d13528f8bb253a1a9986dfef4fa9b9e2479f Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Mateusz=20Pi=C3=B3rkowski?= <mati7337@protonmail.ch>
+Date: Fri, 4 Mar 2022 19:15:23 +0100
+Subject: [PATCH 1/2] Add display_prompt function
+
+Add display_prompt function which will be called for both passwords
+and questions. This will make it possible to get a plaintext password
+string.
+SetDisplayPromptFunction will make it possible to set this callback
+from a theme script.
+
+Closes #150
+---
+ .../ply-boot-splash-plugin.h                  |  4 +++
+ src/libply-splash-core/ply-boot-splash.c      | 12 +++++++
+ src/libply-splash-core/ply-boot-splash.h      |  4 +++
+ src/main.c                                    |  8 +++++
+ src/plugins/splash/script/plugin.c            | 16 ++++++++++
+ .../splash/script/script-lib-plymouth.c       | 31 +++++++++++++++++++
+ .../splash/script/script-lib-plymouth.h       |  6 ++++
+ 7 files changed, 81 insertions(+)
+
+diff --git a/src/libply-splash-core/ply-boot-splash-plugin.h b/src/libply-splash-core/ply-boot-splash-plugin.h
+index c80770c..69f34e1 100644
+--- a/src/libply-splash-core/ply-boot-splash-plugin.h
++++ b/src/libply-splash-core/ply-boot-splash-plugin.h
+@@ -95,6 +95,10 @@ typedef struct
+                                  const char               *entry_text);
+         void (*become_idle)(ply_boot_splash_plugin_t *plugin,
+                             ply_trigger_t            *idle_trigger);
++        void (*display_prompt)(ply_boot_splash_plugin_t *plugin,
++                               const char               *prompt,
++                               const char               *entry_text,
++                               bool                      is_secret);
+ } ply_boot_splash_plugin_interface_t;
+ 
+ #endif /* PLY_BOOT_SPLASH_PLUGIN_H */
+diff --git a/src/libply-splash-core/ply-boot-splash.c b/src/libply-splash-core/ply-boot-splash.c
+index 9549ecc..d5cbf1f 100644
+--- a/src/libply-splash-core/ply-boot-splash.c
++++ b/src/libply-splash-core/ply-boot-splash.c
+@@ -640,6 +640,18 @@ void ply_boot_splash_display_question (ply_boot_splash_t *splash,
+                 splash->plugin_interface->display_question (splash->plugin, prompt, entry_text);
+ }
+ 
++void ply_boot_splash_display_prompt (ply_boot_splash_t *splash,
++                                     const char        *prompt,
++                                     const char        *entry_text,
++                                     bool               is_secret)
++{
++        assert (splash != NULL);
++        assert (splash->plugin_interface != NULL);
++        assert (splash->plugin != NULL);
++        if (splash->plugin_interface->display_prompt != NULL)
++                splash->plugin_interface->display_prompt (splash->plugin, prompt, entry_text, is_secret);
++}
++
+ 
+ 
+ void
+diff --git a/src/libply-splash-core/ply-boot-splash.h b/src/libply-splash-core/ply-boot-splash.h
+index 0bdbe96..1bb0c6b 100644
+--- a/src/libply-splash-core/ply-boot-splash.h
++++ b/src/libply-splash-core/ply-boot-splash.h
+@@ -82,6 +82,10 @@ void ply_boot_splash_display_password (ply_boot_splash_t *splash,
+ void ply_boot_splash_display_question (ply_boot_splash_t *splash,
+                                        const char        *prompt,
+                                        const char        *entry_text);
++void ply_boot_splash_display_prompt (ply_boot_splash_t *splash,
++                                     const char        *prompt,
++                                     const char        *entry_text,
++                                     bool               is_secret);
+ void ply_boot_splash_attach_to_event_loop (ply_boot_splash_t *splash,
+                                            ply_event_loop_t  *loop);
+ void ply_boot_splash_attach_progress (ply_boot_splash_t *splash,
+diff --git a/src/main.c b/src/main.c
+index bedab7d..255a86a 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -1462,10 +1462,18 @@ update_display (state_t *state)
+                         ply_boot_splash_display_password (state->boot_splash,
+                                                           entry_trigger->prompt,
+                                                           bullets);
++                        ply_boot_splash_display_prompt (state->boot_splash,
++                                                        entry_trigger->prompt,
++                                                        ply_buffer_get_bytes (state->entry_buffer),
++                                                        true);
+                 } else if (entry_trigger->type == PLY_ENTRY_TRIGGER_TYPE_QUESTION) {
+                         ply_boot_splash_display_question (state->boot_splash,
+                                                           entry_trigger->prompt,
+                                                           ply_buffer_get_bytes (state->entry_buffer));
++                        ply_boot_splash_display_prompt (state->boot_splash,
++                                                        entry_trigger->prompt,
++                                                        ply_buffer_get_bytes (state->entry_buffer),
++                                                        false);
+                 } else {
+                         ply_trace ("unkown entry type");
+                 }
+diff --git a/src/plugins/splash/script/plugin.c b/src/plugins/splash/script/plugin.c
+index 492f493..a55b9c2 100644
+--- a/src/plugins/splash/script/plugin.c
++++ b/src/plugins/splash/script/plugin.c
+@@ -509,6 +509,21 @@ display_question (ply_boot_splash_plugin_t *plugin,
+         unpause_displays (plugin);
+ }
+ 
++static void
++display_prompt (ply_boot_splash_plugin_t *plugin,
++                const char               *prompt,
++                const char               *entry_text,
++                bool                      is_secret)
++{
++        pause_displays (plugin);
++        script_lib_plymouth_on_display_prompt (plugin->script_state,
++                                               plugin->script_plymouth_lib,
++                                               prompt,
++                                               entry_text,
++                                               is_secret);
++        unpause_displays (plugin);
++}
++
+ static void
+ display_message (ply_boot_splash_plugin_t *plugin,
+                  const char               *message)
+@@ -552,6 +567,7 @@ ply_boot_splash_plugin_get_interface (void)
+                 .display_normal       = display_normal,
+                 .display_password     = display_password,
+                 .display_question     = display_question,
++                .display_prompt       = display_prompt,
+                 .display_message      = display_message,
+                 .hide_message         = hide_message,
+         };
+diff --git a/src/plugins/splash/script/script-lib-plymouth.c b/src/plugins/splash/script/script-lib-plymouth.c
+index 97ac10e..6bef52a 100644
+--- a/src/plugins/splash/script/script-lib-plymouth.c
++++ b/src/plugins/splash/script/script-lib-plymouth.c
+@@ -104,6 +104,7 @@ script_lib_plymouth_data_t *script_lib_plymouth_setup (script_state_t        *st
+         data->script_display_normal_func = script_obj_new_null ();
+         data->script_display_password_func = script_obj_new_null ();
+         data->script_display_question_func = script_obj_new_null ();
++        data->script_display_prompt_func = script_obj_new_null ();
+         data->script_display_message_func = script_obj_new_null ();
+         data->script_hide_message_func = script_obj_new_null ();
+         data->script_quit_func = script_obj_new_null ();
+@@ -166,6 +167,12 @@ script_lib_plymouth_data_t *script_lib_plymouth_setup (script_state_t        *st
+                                     &data->script_display_question_func,
+                                     "function",
+                                     NULL);
++        script_add_native_function (plymouth_hash,
++                                    "SetDisplayPromptFunction",
++                                    plymouth_set_function,
++                                    &data->script_display_prompt_func,
++                                    "function",
++                                    NULL);
+         script_add_native_function (plymouth_hash,
+                                     "SetDisplayMessageFunction",
+                                     plymouth_set_function,
+@@ -215,6 +222,7 @@ void script_lib_plymouth_destroy (script_lib_plymouth_data_t *data)
+         script_obj_unref (data->script_display_normal_func);
+         script_obj_unref (data->script_display_password_func);
+         script_obj_unref (data->script_display_question_func);
++        script_obj_unref (data->script_display_prompt_func);
+         script_obj_unref (data->script_display_message_func);
+         script_obj_unref (data->script_hide_message_func);
+         script_obj_unref (data->script_quit_func);
+@@ -342,6 +350,29 @@ void script_lib_plymouth_on_display_question (script_state_t             *state,
+         script_obj_unref (ret.object);
+ }
+ 
++void script_lib_plymouth_on_display_prompt (script_state_t             *state,
++                                            script_lib_plymouth_data_t *data,
++                                            const char                 *prompt,
++                                            const char                 *entry_text,
++                                            bool                        is_secret)
++{
++        script_obj_t *prompt_obj = script_obj_new_string (prompt);
++        script_obj_t *entry_text_obj = script_obj_new_string (entry_text);
++        script_obj_t *is_secret_obj = script_obj_new_number (is_secret);
++        script_return_t ret = script_execute_object (state,
++                                                     data->script_display_prompt_func,
++                                                     NULL,
++                                                     prompt_obj,
++                                                     entry_text_obj,
++                                                     is_secret_obj,
++                                                     NULL);
++
++        script_obj_unref (prompt_obj);
++        script_obj_unref (entry_text_obj);
++        script_obj_unref (is_secret_obj);
++        script_obj_unref (ret.object);
++}
++
+ void script_lib_plymouth_on_display_message (script_state_t             *state,
+                                              script_lib_plymouth_data_t *data,
+                                              const char                 *message)
+diff --git a/src/plugins/splash/script/script-lib-plymouth.h b/src/plugins/splash/script/script-lib-plymouth.h
+index 0d3fe66..5a7f38a 100644
+--- a/src/plugins/splash/script/script-lib-plymouth.h
++++ b/src/plugins/splash/script/script-lib-plymouth.h
+@@ -36,6 +36,7 @@ typedef struct
+         script_obj_t          *script_display_normal_func;
+         script_obj_t          *script_display_password_func;
+         script_obj_t          *script_display_question_func;
++        script_obj_t          *script_display_prompt_func;
+         script_obj_t          *script_display_message_func;
+         script_obj_t          *script_hide_message_func;
+         script_obj_t          *script_quit_func;
+@@ -73,6 +74,11 @@ void script_lib_plymouth_on_display_question (script_state_t             *state,
+                                               script_lib_plymouth_data_t *data,
+                                               const char                 *prompt,
+                                               const char                 *entry_text);
++void script_lib_plymouth_on_display_prompt (script_state_t             *state,
++                                            script_lib_plymouth_data_t *data,
++                                            const char                 *prompt,
++                                            const char                 *entry_text,
++                                            bool                        is_secret);
+ void script_lib_plymouth_on_display_message (script_state_t             *state,
+                                              script_lib_plymouth_data_t *data,
+                                              const char                 *new_message);
+-- 
+2.35.1
+
