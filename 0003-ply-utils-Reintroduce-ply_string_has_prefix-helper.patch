@@ -1,0 +1,50 @@
+From ab4238d54813561d3ad0e50684504d67e4c5ba96 Mon Sep 17 00:00:00 2001
+From: Hans de Goede <hdegoede@redhat.com>
+Date: Mon, 7 Mar 2022 12:25:56 +0100
+Subject: [PATCH 3/4] ply-utils: Reintroduce ply_string_has_prefix helper
+
+ply_string_has_prefix was dropped in commit c7965ea19abf ("ply-utils:
+Drop unused ply_string_has_prefix helper"). We have a need for this
+helper again, so reintroduce it.
+
+Signed-off-by: Hans de Goede <hdegoede@redhat.com>
+---
+ src/libply/ply-utils.c | 9 +++++++++
+ src/libply/ply-utils.h | 1 +
+ 2 files changed, 10 insertions(+)
+
+diff --git a/src/libply/ply-utils.c b/src/libply/ply-utils.c
+index f90ac40..f457579 100644
+--- a/src/libply/ply-utils.c
++++ b/src/libply/ply-utils.c
+@@ -459,6 +459,15 @@ ply_free_string_array (char **array)
+         free (array);
+ }
+ 
++bool
++ply_string_has_prefix (const char *str, const char *prefix)
++{
++        if (str == NULL || prefix == NULL)
++                return false;
++
++        return strncmp (str, prefix, strlen (prefix)) == 0;
++}
++
+ double
+ ply_get_timestamp (void)
+ {
+diff --git a/src/libply/ply-utils.h b/src/libply/ply-utils.h
+index 47bb3f2..7572cca 100644
+--- a/src/libply/ply-utils.h
++++ b/src/libply/ply-utils.h
+@@ -85,6 +85,7 @@ bool ply_fd_has_data (int fd);
+ bool ply_set_fd_as_blocking (int fd);
+ char **ply_copy_string_array (const char *const *array);
+ void ply_free_string_array (char **array);
++bool ply_string_has_prefix (const char *str, const char *prefix);
+ double ply_get_timestamp (void);
+ 
+ void ply_save_errno (void);
+-- 
+2.35.1
+

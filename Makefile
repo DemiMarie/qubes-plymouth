@@ -1,16 +1,15 @@
 DIST ?= fc32
 VERSION := $(file <version)
 REL := $(file <rel)
-COMMIT := e31c81f9849c176d7b293ca79cc4507ba740c2fa
 SHORTCOMMIT := $(shell echo $(COMMIT) | cut -b 1-7)
 
 FEDORA_SOURCES := https://src.fedoraproject.org/rpms/plymouth/raw/f$(subst fc,,$(DIST))/f/sources
-SRC_FILE := plymouth-$(SHORTCOMMIT).tar.gz
+SRC_FILE := plymouth-$(VERSION).tar.bz2
 
 BUILDER_DIR ?= ../..
 SRC_DIR ?= qubes-src
 
-SRC_URL ?= https://gitlab.freedesktop.org/plymouth/plymouth/-/archive/$(COMMIT)/$(SRC_FILE)
+SRC_URL ?= https://gitlab.freedesktop.org/plymouth/plymouth/-/archive/$(VERSION)/plymouth-$(VERSION).tar.bz2
 UNTRUSTED_SUFF := .UNTRUSTED
 
 ifeq ($(FETCH_CMD),)

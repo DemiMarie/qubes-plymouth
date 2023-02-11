@@ -1,0 +1,8 @@
+host:
+  rpm:
+    build:
+    - plymouth.spec
+source:
+  files:
+  - url: https://gitlab.freedesktop.org/plymouth/plymouth/-/archive/@VERSION@/plymouth-@VERSION@.tar.bz2
+    sha512: plymouth-@VERSION@.tar.bz2.sha512

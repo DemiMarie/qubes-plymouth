@@ -1,0 +1,84 @@
+From d32a748fe5c24d5cc3b3dd671a045102373dd392 Mon Sep 17 00:00:00 2001
+From: Hans de Goede <hdegoede@redhat.com>
+Date: Wed, 28 Sep 2022 15:16:15 +0200
+Subject: [PATCH 6/6] ply-device-manager: Also ignore SimpleDRM devs in
+ coldplug enumeration path
+
+Plymouth has 2 hw discovery paths:
+1. Enumerating devices already known by udev at plymouth startup
+2. Devices which are hotplugged after startup
+
+At boot we have udevd which is enumerating hw and plymouthd racing
+with each other, which means that plymouthd may discover the new
+SimpleDRM device through either 1. or 2.
+
+Before this patch a check for SimpleDRM was missing from path 1, causing
+it to be treated as a normal device instead of being ignored as intended:
+
+plymouth-debug.log for the simpledrm being enumerated in path 1:
+
+ply-device-manager.c:344: create_devices_for_subsystem:
+ found device /sys/devices/platform/simple-framebuffer.0/drm/card0
+ply-device-manager.c:351: create_devices_for_subsystem:
+ device is initialized
+ply-device-manager.c:360: create_devices_for_subsystem:
+ found node /dev/dri/card0
+ply-device-manager.c:283: create_devices_for_udev_device:
+ found DRM device /dev/dri/card0
+ply-device-manager.c:885: create_devices_for_terminal_and_rende:
+ creating devices for /dev/dri/card0 (renderer type: 1)
+
+plymouth-debug.log for the simpledrm *not* being enumerated in path 1:
+
+ply-device-manager.c:344: create_devices_for_subsystem:
+ found device /sys/devices/platform/simple-framebuffer.0/drm/card0
+ply-device-manager.c:367: create_devices_for_subsystem:
+ it's not initialized
+
+followed by path 2 enumerating the device very shortly after this:
+
+ply-device-manager.c:532: on_udev_event:
+ got add event for device /dev/dri/card0
+ply-device-manager.c:462: verify_add_or_change:
+ ignoring since we only handle SimpleDRM devices after timeout
+
+Note how path 2 does correctly ignore SimpleDRM devices, where as
+path 1 does not. This commit fixes this by moving the verify_drm_device()
+check in to create_devices_for_udev_device() which runs in both paths.
+
+Link: https://bugzilla.redhat.com/show_bug.cgi?id=2127663
+Reported-by: Michael Catanzaro <mcatanza@redhat.com>
+Signed-off-by: Hans de Goede <hdegoede@redhat.com>
+---
+ src/libply-splash-core/ply-device-manager.c | 11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/src/libply-splash-core/ply-device-manager.c b/src/libply-splash-core/ply-device-manager.c
+index 23b8b37..820a282 100644
+--- a/src/libply-splash-core/ply-device-manager.c
++++ b/src/libply-splash-core/ply-device-manager.c
+@@ -314,6 +314,10 @@ create_devices_for_udev_device (ply_devi
+                 ply_trace ("device subsystem is %s", subsystem);
+ 
+                 if (subsystem != NULL && strcmp (subsystem, SUBSYSTEM_DRM) == 0) {
++                        if (!manager->device_timeout_elapsed && !verify_drm_device (device)) {
++                                ply_trace ("ignoring since we only handle SimpleDRM devices after timeout");
++                                return false;
++                        }
+                         ply_trace ("found DRM device %s", device_path);
+                         renderer_type = PLY_RENDERER_TYPE_DRM;
+                 } else if (strcmp (subsystem, SUBSYSTEM_FRAME_BUFFER) == 0) {
+@@ -457,11 +461,6 @@ verify_add_or_change (ply_device_manager
+                         ply_trace ("ignoring since we're already using text splash for local console");
+                         return false;
+                 }
+-
+-                if (!verify_drm_device (device)) {
+-                        ply_trace ("ignoring since we only handle SimpleDRM devices after timeout");
+-                        return false;
+-                }
+         } else {
+                 ply_trace ("ignoring since we only handle subsystem %s devices after timeout", subsystem);
+                 return false;
+-- 
+2.37.3

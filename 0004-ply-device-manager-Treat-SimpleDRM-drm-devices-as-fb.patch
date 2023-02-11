@@ -1,0 +1,94 @@
+From 83b385061ccbf5a46ea77f7f12c1c7bfc72a09f2 Mon Sep 17 00:00:00 2001
+From: Hans de Goede <hdegoede@redhat.com>
+Date: Mon, 28 Feb 2022 16:07:11 +0100
+Subject: [PATCH 4/4] ply-device-manager: Treat SimpleDRM drm devices as fbdev
+ devices
+
+Simple-framebuffer devices driven by simpledrm lack information
+like panel-rotation info and physical size, causing the splash
+to briefly render on its side / without HiDPI scaling, switching
+to the correct rendering when the native driver loads.
+
+To avoid this treat simpledrm devices as fbdev devices and only
+use them after the timeout.
+
+Also adds 2 exceptions to this:
+
+1. If nomodeset is passed on the kernel commandline then no native
+drivers will load, so in this case it is best to immediately use
+SimpleDRM devices when they are detected.
+
+2. On some devics the firmware leave the panel black at boot. In this
+case it is desirable to show the splash to the user ASAP so that there
+is some visual feedback that the device is booting. Add a support for a
+"plymouth.use-simpledrm" kernel cmdline option to show the splash
+immediately on SimpleDRM devices rather then waiting for the native
+driver to load.
+
+Closes #167
+
+Signed-off-by: Hans de Goede <hdegoede@redhat.com>
+---
+ src/libply-splash-core/ply-device-manager.c | 39 +++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/src/libply-splash-core/ply-device-manager.c b/src/libply-splash-core/ply-device-manager.c
+index bb548ef..82b89f3 100644
+--- a/src/libply-splash-core/ply-device-manager.c
++++ b/src/libply-splash-core/ply-device-manager.c
+@@ -405,6 +405,40 @@ on_drm_udev_add_or_change (ply_device_manager_t *manager,
+         }
+ }
+ 
++static bool
++verify_drm_device (struct udev_device *device)
++{
++        const char *id_path;
++
++        /*
++         * Simple-framebuffer devices driven by simpledrm lack information
++         * like panel-rotation info and physical size, causing the splash
++         * to briefly render on its side / without HiDPI scaling, switching
++         * to the correct rendering when the native driver loads.
++         * To avoid this treat simpledrm devices as fbdev devices and only
++         * use them after the timeout.
++         */
++        id_path = udev_device_get_property_value (device, "ID_PATH");
++        if (!ply_string_has_prefix (id_path, "platform-simple-framebuffer"))
++                return true; /* Not a SimpleDRM device */
++
++        /*
++         * With nomodeset, no native drivers will load, so SimpleDRM devices
++         * should be used immediately.
++         */
++        if (ply_kernel_command_line_has_argument ("nomodeset"))
++                return true;
++
++        /*
++         * Some firmwares leave the panel black at boot. Allow enabling SimpleDRM
++         * use from the cmdline to show something to the user ASAP.
++         */
++        if (ply_kernel_command_line_has_argument ("plymouth.use-simpledrm"))
++                return true;
++
++        return false;
++}
++
+ static bool
+ verify_add_or_change (ply_device_manager_t *manager,
+                       const char           *action,
+@@ -423,6 +457,11 @@ verify_add_or_change (ply_device_manager_t *manager,
+                         ply_trace ("ignoring since we're already using text splash for local console");
+                         return false;
+                 }
++
++                if (!verify_drm_device (device)) {
++                        ply_trace ("ignoring since we only handle SimpleDRM devices after timeout");
++                        return false;
++                }
+         } else {
+                 ply_trace ("ignoring since we only handle subsystem %s devices after timeout", subsystem);
+                 return false;
+-- 
+2.35.1
+

@@ -1,26 +1,23 @@
-%global commit e31c81f9849c176d7b293ca79cc4507ba740c2fa
-%global commitdate 20200325
-%global shortcommit %(c=%{commit}; echo ${c:0:7})
-
 Summary: Graphical Boot Animation and Logger
 Name: plymouth
 Version: @VERSION@
-Release: @REL@.%{commitdate}git%{shortcommit}%{?dist}
+Release: @REL@%{?dist}
 License: GPLv2+
 URL: http://www.freedesktop.org/wiki/Software/Plymouth
 
-Source0: https://gitlab.freedesktop.org/plymouth/plymouth/-/archive/%{commit}/%{name}-%{shortcommit}.tar.gz
+Source0: https://gitlab.freedesktop.org/plymouth/plymouth/-/archive/%{version}/%{name}-%{version}.tar.bz2
 Source2: charge.plymouth
 
-# Upstream has bumped the soname because some obscure symbols were dropped,
-# but we really do not want to change soname in Fedora during a cycle.
-# The only libply* user in Fedora outside this pkg is plymouth-theme-breeze
-# and that does not need the removed symbols.
-Patch0: 0001-Revert-configure-bump-so-name.patch
+# patches cherry-picked from upstream git
+patch1:  0001-drm-Retry-setting-scanout-buffer-on-failure.patch
+patch2:  0002-Add-support-for-CSI-sequences.patch
+patch3:  0003-ply-utils-Reintroduce-ply_string_has_prefix-helper.patch
+patch4:  0004-ply-device-manager-Treat-SimpleDRM-drm-devices-as-fb.patch
+patch5:  0005-ply-device-manager-Move-verify_drm_device-higher-up-.patch
+patch6:  0006-ply-device-manager-Also-ignore-SimpleDRM-devs-in-col.patch
 
-Patch1: 0001-Add-support-for-CSI-sequences.patch
-Patch2: 0001-Add-display_prompt-function.patch
-Patch3: 0002-script-add-String.Length-function.patch
+Patch11: 0011-Add-display_prompt-function.patch
+Patch12: 0012-script-add-String.Length-function.patch
 
 BuildRequires: gcc libtool git
 BuildRequires: pkgconfig(libdrm)
@@ -33,6 +30,10 @@ BuildRequires: pango-devel >= 1.21.0
 BuildRequires: cairo-devel
 BuildRequires: gettext-devel
 BuildRequires: intltool
+# for /usr/bin/systemd-tty-ask-password-agent
+BuildRequires: systemd
+# for _unitdir macro
+BuildRequires: systemd-rpm-macros
 
 Requires: %{name}-core-libs = %{version}-%{release}
 Requires: %{name}-scripts = %{version}-%{release}
@@ -216,7 +217,7 @@ Plymouth. It features a small spinner on a dark background.
 
 
 %prep
-%autosetup -p1 -n %{name}-%{commit}
+%autosetup -p1
 autoreconf --install --symlink -Wno-portability
 # Change the default theme
 sed -i -e 's/spinner/bgrt/g' src/plymouthd.defaults
@@ -321,6 +322,7 @@ fi
 %config(noreplace) %{_sysconfdir}/plymouth/plymouthd.conf
 %config(noreplace) %{_sysconfdir}/logrotate.d/bootlog
 %{_sbindir}/plymouthd
+%{_libexecdir}/plymouth/plymouthd-fd-escrow
 %{_bindir}/plymouth
 %{_libdir}/plymouth/details.so
 %{_libdir}/plymouth/text.so
@@ -331,8 +333,8 @@ fi
 %{_datadir}/plymouth/plymouthd.defaults
 %{_localstatedir}/spool/plymouth
 %{_mandir}/man?/*
-%ghost %{_localstatedir}/lib/plymouth/boot-duration
-%{_prefix}/lib/systemd/system/
+%ghost %verify(not mode) %{_localstatedir}/lib/plymouth/boot-duration
+%{_unitdir}/
 
 %files devel
 %{_libdir}/libply.so
